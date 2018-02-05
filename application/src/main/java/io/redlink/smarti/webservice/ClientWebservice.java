@@ -1,6 +1,6 @@
 package io.redlink.smarti.webservice;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableMap;
 import io.redlink.smarti.model.AuthToken;
 import io.redlink.smarti.model.Client;
 import io.redlink.smarti.model.SmartiUser;
@@ -12,6 +12,7 @@ import io.redlink.smarti.webservice.pojo.AuthContext;
 import io.redlink.smarti.webservice.pojo.SmartiUserData;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,7 +47,9 @@ public class ClientWebservice {
     private final AuthenticationService authenticationService;
 
     @Autowired
-    public ClientWebservice(ClientService clientService, UserService userService, ObjectMapper objectMapper, ConfigurationService configService, AuthTokenService authTokenService, AuthenticationService authenticationService) {
+    public ClientWebservice(ClientService clientService, UserService userService, ObjectMapper objectMapper,
+            ConfigurationService configService, AuthTokenService authTokenService,
+            AuthenticationService authenticationService) {
         this.clientService = clientService;
         this.userService = userService;
         this.objectMapper = objectMapper;
@@ -84,27 +87,28 @@ public class ClientWebservice {
 
     @ApiOperation(value = "delete a client")
     @RequestMapping(value = "{id}", method = RequestMethod.DELETE)
-    public ResponseEntity<?> deleteClient(AuthContext authContext,
-                                          @PathVariable("id") ObjectId id) throws IOException {
+    public ResponseEntity<?> deleteClient(AuthContext authContext, @PathVariable("id") ObjectId id) throws IOException {
         authenticationService.assertRole(authContext, AuthenticationService.ADMIN);
-        if(clientService.exists(id)) {
+        if (clientService.exists(id)) {
             clientService.delete(clientService.get(id));
-            return ResponseEntity.ok().build();
-        } else return ResponseEntities.status(404, "client does not exist");
+            return ResponseEntity.noContent().build();
+        } else
+            return ResponseEntities.status(404, "client does not exist");
     }
 
-    @ApiOperation(value = "creates/updates a client config", response = ComponentConfiguration.class, responseContainer ="{'category': [..]}")
+    @ApiOperation(value = "creates/updates a client config", response = ComponentConfiguration.class, responseContainer = "{'category': [..]}")
     @RequestMapping(value = "{id}/config", method = RequestMethod.POST)
     public ResponseEntity<?> storeConfig(AuthContext authContext, @PathVariable("id") ObjectId id,
-                                         @RequestBody(required=true) Configuration configuration) throws IOException {
+            @RequestBody(required = true) Configuration configuration) throws IOException {
         final Client client = authenticationService.assertClient(authContext, id);
 
         return ResponseEntity.ok(configService.storeConfiguration(client, configuration.getConfig()));
     }
 
-    @ApiOperation(value = "get a client config", response = ComponentConfiguration.class, responseContainer ="{'category': [..]}")
+    @ApiOperation(value = "get a client config", response = ComponentConfiguration.class, responseContainer = "{'category': [..]}")
     @RequestMapping(value = "{id}/config", method = RequestMethod.GET)
-    public ResponseEntity<?> getClientConfiguration(AuthContext authContext, @PathVariable("id") ObjectId id) throws IOException {
+    public ResponseEntity<?> getClientConfiguration(AuthContext authContext, @PathVariable("id") ObjectId id)
+            throws IOException {
         final Client client = authenticationService.assertClient(authContext, id);
 
         final Configuration c = configService.getClientConfiguration(client);
@@ -124,9 +128,8 @@ public class ClientWebservice {
 
     @ApiOperation(value = "create an auth-token", response = AuthToken.class)
     @RequestMapping(value = "{id}/token", method = RequestMethod.POST)
-    public ResponseEntity<AuthToken> createAuthToken(AuthContext authContext,
-                                             @PathVariable("id") ObjectId id,
-                                             @RequestBody(required = false) AuthToken token) {
+    public ResponseEntity<AuthToken> createAuthToken(AuthContext authContext, @PathVariable("id") ObjectId id,
+            @RequestBody(required = false) AuthToken token) {
         final Client client = authenticationService.assertClient(authContext, id);
         String label = "new-token";
         if (token != null) {
@@ -138,10 +141,8 @@ public class ClientWebservice {
 
     @ApiOperation(value = "update an auth-token", response = AuthToken.class)
     @RequestMapping(value = "{id}/token/{token}", method = RequestMethod.PUT)
-    public ResponseEntity<AuthToken> updateAuthToken(AuthContext authContext,
-                                             @PathVariable("id") ObjectId id,
-                                             @PathVariable("token") String tokenId,
-                                             @RequestBody AuthToken token) {
+    public ResponseEntity<AuthToken> updateAuthToken(AuthContext authContext, @PathVariable("id") ObjectId id,
+            @PathVariable("token") String tokenId, @RequestBody AuthToken token) {
         final Client client = authenticationService.assertClient(authContext, id);
 
         final AuthToken updated = authTokenService.updateAuthToken(tokenId, client.getId(), token);
@@ -155,9 +156,8 @@ public class ClientWebservice {
 
     @ApiOperation("revoke an auth-token")
     @RequestMapping(value = "{id}/token/{token}", method = RequestMethod.DELETE)
-    public ResponseEntity<?> revokeAuthToken(AuthContext authContext,
-                                             @PathVariable("id") ObjectId id,
-                                             @PathVariable("token") String tokenId) {
+    public ResponseEntity<?> revokeAuthToken(AuthContext authContext, @PathVariable("id") ObjectId id,
+            @PathVariable("token") String tokenId) {
         final Client client = authenticationService.assertClient(authContext, id);
         if (authTokenService.deleteAuthToken(tokenId, client.getId())) {
             return ResponseEntity.noContent().build();
@@ -169,19 +169,17 @@ public class ClientWebservice {
     @ApiOperation(value = "list users", notes = "retrieve users assigned to the given client")
     @RequestMapping("{id}/user")
     public ResponseEntity<List<SmartiUserData>> listClientUsers(AuthContext authContext,
-                                                                @PathVariable("id") ObjectId id) {
+            @PathVariable("id") ObjectId id) {
         final Client client = authenticationService.assertClient(authContext, id);
 
-        return ResponseEntity.ok(userService.getUsersForClient(client).stream()
-                .map(SmartiUserData::fromModel)
+        return ResponseEntity.ok(userService.getUsersForClient(client).stream().map(SmartiUserData::fromModel)
                 .collect(Collectors.toList()));
     }
 
     @ApiOperation(value = "create user", notes = "create a new user and assign it to the client")
     @RequestMapping(value = "{id}/user", method = RequestMethod.POST)
-    public ResponseEntity<SmartiUserData> createClientUser(AuthContext authContext,
-                                                           @PathVariable("id") ObjectId id,
-                                                           @RequestBody SmartiUserData user) {
+    public ResponseEntity<SmartiUserData> createClientUser(AuthContext authContext, @PathVariable("id") ObjectId id,
+            @RequestBody SmartiUserData user) {
         final Client client = authenticationService.assertClient(authContext, id);
 
         if (StringUtils.isBlank(user.getLogin())) {
@@ -194,9 +192,8 @@ public class ClientWebservice {
 
     @ApiOperation(value = "assign user", notes = "assign an existing user with the client")
     @RequestMapping(value = "{id}/user/{user}", method = RequestMethod.PUT)
-    public ResponseEntity<SmartiUserData> addClientUser(AuthContext authContext,
-                                              @PathVariable("id") ObjectId id,
-                                              @PathVariable("user") String username) {
+    public ResponseEntity<SmartiUserData> addClientUser(AuthContext authContext, @PathVariable("id") ObjectId id,
+            @PathVariable("user") String username) {
         final Client client = authenticationService.assertClient(authContext, id);
 
         final SmartiUser addedUser = userService.addUserToClient(username, client);
@@ -209,15 +206,13 @@ public class ClientWebservice {
 
     @ApiOperation(value = "remove user", notes = "unassign a user from the client")
     @RequestMapping(value = "{id}/user/{user}", method = RequestMethod.DELETE)
-    public ResponseEntity<?> removeClientUser(AuthContext authContext,
-                                              @PathVariable("id") ObjectId id,
-                                              @PathVariable("user") String username) {
+    public ResponseEntity<?> removeClientUser(AuthContext authContext, @PathVariable("id") ObjectId id,
+            @PathVariable("user") String username) {
         final Client client = authenticationService.assertClient(authContext, id);
 
         userService.removeUserFromClient(username, client);
 
         return ResponseEntity.noContent().build();
     }
-
 
 }
