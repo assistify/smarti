@@ -22,6 +22,10 @@ import io.redlink.nlp.api.model.Annotation;
 import io.redlink.nlp.model.AnalyzedText;
 import io.redlink.nlp.model.AnalyzedText.AnalyzedTextBuilder;
 import io.redlink.nlp.model.Section;
+import io.redlink.nlp.model.section.SectionTag;
+import io.redlink.nlp.model.section.SectionType;
+import io.redlink.smarti.model.Analysis;
+import io.redlink.smarti.model.Client;
 import io.redlink.smarti.model.Conversation;
 import io.redlink.smarti.model.Message;
 
@@ -32,38 +36,66 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import static io.redlink.nlp.model.NlpAnnotations.SECTION_ANNOTATION;
 import static io.redlink.smarti.processing.SmartiAnnotations.*;
 
-public class ProcessingData extends io.redlink.nlp.api.ProcessingData {
+public class AnalysisData extends io.redlink.nlp.api.ProcessingData {
     
-    protected ProcessingData(Conversation conversation, AnalyzedText at) {
+    private static final Logger log = LoggerFactory.getLogger(AnalysisData.class);
+    
+    protected AnalysisData(Conversation conversation, Analysis analysis, AnalyzedText at) {
         super(new StringContent(at.getText()), null);
         addAnnotation(AnalyzedText.ANNOTATION, at);
         addAnnotation(CONVERSATION_ANNOTATION, conversation);
+        if(analysis != null){
+            addAnnotation(ANALYSIS_ANNOTATION, analysis);
+        }
     }
     
-    public static ProcessingData create(Conversation conversation){
+    public static AnalysisData create(Conversation conversation, Client client){
+        return create(conversation, client, -1);
+    }
+    public static AnalysisData create(Conversation conversation, Client client, int contextSize){
+        return create(conversation, new Analysis(client.getId(), conversation.getId(),conversation.getLastModified()), contextSize);
+    }
+    
+    public static AnalysisData create(Conversation conversation, Analysis analysis){
+        return create(conversation, analysis,-1);
+    }
+    public static AnalysisData create(Conversation conversation, Analysis analysis, int contextSize){
         AnalyzedTextBuilder atb = AnalyzedText.build();
         int numMessages = conversation.getMessages().size();
         boolean first = true;
-        for(int i=0;i < numMessages; i++){
+        int startIdx = contextSize <= 0 ? 0 : Math.max(0, numMessages - contextSize);
+        log.trace("analysisContext: [{}..{}](size: {})", startIdx, numMessages-1, contextSize);
+        for(int i=startIdx; i < numMessages; i++){
             Message message = conversation.getMessages().get(i);
             if(StringUtils.isNoneBlank(message.getContent())){
                 Section section = atb.appendSection(first ? null : "\n", message.getContent(), "\n");
                 section.addAnnotation(MESSAGE_IDX_ANNOTATION, i);
                 section.addAnnotation(MESSAGE_ANNOTATION, message);
+                section.addAnnotation(SECTION_ANNOTATION, new SectionTag(SectionType.paragraph, "message"));
                 first = false;
             } //else ignore blank messages for analysis
         }
-        return new ProcessingData(conversation, atb.create());
+        return new AnalysisData(conversation, analysis, atb.create());
     }
     /**
-     * Shorthand for {@link #getAnnotation(Annotation)} with {@link #CONVERSATION_ANNOTATION}
-     * @return the Conversation for this {@link ProcessingData}
+     * Shorthand for {@link #getAnnotation(Annotation)} with {@link SmartiAnnotations#CONVERSATION_ANNOTATION}
+     * @return the Conversation for this {@link AnalysisData}
      */
     public final Conversation getConversation(){
         return getAnnotation(CONVERSATION_ANNOTATION);
+    }
+    /**
+     * Shorthand for {@link #getAnnotation(Annotation)} with {@link SmartiAnnotations#ANALYSIS_ANNOTATION}
+     * @return the Analysis for this {@link AnalysisData}
+     */
+    public final Analysis getAnalysis(){
+        return getAnnotation(ANALYSIS_ANNOTATION);
     }
     
     /**

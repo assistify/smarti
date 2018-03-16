@@ -17,34 +17,50 @@
 
 package io.redlink.smarti.services;
 
+import io.redlink.nlp.api.ProcessingData;
 import io.redlink.nlp.api.ProcessingException;
 import io.redlink.nlp.api.Processor;
+import io.redlink.smarti.model.Analysis;
 import io.redlink.smarti.model.Client;
 import io.redlink.smarti.model.Conversation;
-import io.redlink.smarti.processing.ProcessingData;
+import io.redlink.smarti.model.config.ComponentConfiguration;
+import io.redlink.smarti.model.config.Configuration;
+import io.redlink.smarti.processing.AnalysisConfiguration;
+import io.redlink.smarti.processing.AnalysisData;
+import io.redlink.smarti.processing.AnalysisLanguageConfiguration;
+
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
 import java.util.*;
+import java.util.stream.StreamSupport;
 
 @Service
+@EnableConfigurationProperties(AnalysisConfiguration.class)
 public class PrepareService {
 
+
     private final Logger log = LoggerFactory.getLogger(this.getClass());
+
+    public static final String ANALYSIS_CONFIGURATION_CATEGORY = "Analysis";
 
     private static Set<String> REQUIRED = Collections.unmodifiableSet(Collections.emptySet());
     private static Set<String> OPTIONAL = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("*")));
 
-    @Value("${smarti.analysis.required:}")
-    private String requiredProcessors;
-    
-    @Value("${smarti.analysis.optional:}")
-    private String optionalProcessors;
+//    @Value("${smarti.analysis.required:}")
+//    private String requiredProcessors;
+//    
+//    @Value("${smarti.analysis.optional:}")
+//    private String optionalProcessors;
 
+    private AnalysisConfiguration analysisConfig;
+    private ConfigurationService confService;
+    private AnalysisLanguageConfiguration analysisLanguageConfig;
     /*
      * NOTE: Only used for initialization. Do not access 
      */
@@ -53,7 +69,13 @@ public class PrepareService {
     private final List<Processor> pipeline = new ArrayList<>();
     
 
-    public PrepareService(Optional<List<Processor>> processors) {
+    public PrepareService(AnalysisConfiguration analysisConfig, 
+            AnalysisLanguageConfiguration analysisLanguageConfig,
+            Optional<ConfigurationService> configService, 
+            Optional<List<Processor>> processors) {
+        this.analysisConfig = analysisConfig;
+        this.confService = configService.orElse(null);
+        this.analysisLanguageConfig = analysisLanguageConfig;
         log.debug("available processors: {}", processors);
         this._processors = processors.orElse(Collections.emptyList());
 
@@ -68,10 +90,10 @@ public class PrepareService {
         Set<String> required;
         Set<String> optional;
         Set<String> blacklist = new HashSet<>();
-        if(StringUtils.isNotBlank(requiredProcessors)){
-            log.info("use configured required Processors: [{}]", requiredProcessors);
+        if(StringUtils.isNotBlank(analysisConfig.getPipeline().getRequired())){
+            log.info("use configured required Processors: [{}]", analysisConfig.getPipeline().getRequired());
             required = new HashSet<>();
-            for(String proc : StringUtils.split(requiredProcessors, ',')){
+            for(String proc : StringUtils.split(analysisConfig.getPipeline().getRequired(), ',')){
                 proc = StringUtils.trimToNull(proc);
                 if(proc != null){
                     required.add(proc);
@@ -81,10 +103,10 @@ public class PrepareService {
             log.info("use default required Processors: {}", REQUIRED);
             required = new HashSet<>(REQUIRED);
         }
-        if(StringUtils.isNotBlank(optionalProcessors)){
-            log.info("use configured optional Processors: [{}]", optionalProcessors);
+        if(StringUtils.isNotBlank(analysisConfig.getPipeline().getOptional())){
+            log.info("use configured optional Processors: [{}]", analysisConfig.getPipeline().getOptional());
             optional = new HashSet<>();
-            for(String proc : StringUtils.split(optionalProcessors, ',')){
+            for(String proc : StringUtils.split(analysisConfig.getPipeline().getOptional(), ',')){
                 proc = StringUtils.trimToNull(proc);
                 if(proc != null){
                     if(proc.charAt(0) == '!'){
@@ -124,13 +146,35 @@ public class PrepareService {
         _processors.clear();
     }
     
-    public void prepare(Client client, Conversation conversation) {
+    public Analysis prepare(Client client, Conversation conversation, Date date) {
+        Analysis analysis = new Analysis(client.getId(), conversation.getId(), date);
         //TODO: get pipeline and processor configuration for the parsed client
         log.debug("Preparing query for {}", conversation);
-        while(conversation.getTokens().remove(null)){
-            log.warn("Parsed Conversation {} contained a NULL Token", conversation);
+        AnalysisData pd = AnalysisData.create(conversation, analysis, analysisConfig.getConextSize());
+        
+        //The configuration allows to define the language of the conversation
+        String conversationLanguage = null;
+        Configuration config = confService != null ? confService.getClientConfiguration(client) : null;
+        if(config != null){
+            Optional<String> clientLanguage = StreamSupport.stream(config.getConfigurations(analysisLanguageConfig).spliterator(),false)
+                .filter(ComponentConfiguration::isEnabled)
+                .map(cc -> cc.getConfiguration(AnalysisLanguageConfiguration.KEY_LANGUAGE, ""))
+                .filter(StringUtils::isNotEmpty)
+                .findFirst();
+            if(clientLanguage.isPresent()){
+                log.debug(" set conversation language to '{}' (client configuration)", clientLanguage.get());
+                conversationLanguage = clientLanguage.get();
+            }
         }
-        ProcessingData pd = ProcessingData.create(conversation);
+        if(conversationLanguage == null && StringUtils.isNotBlank(analysisConfig.getLanguage())){
+            log.debug(" set conversation language to '{}' (global configuration)", analysisConfig.getLanguage());
+            conversationLanguage = analysisConfig.getLanguage();
+        }
+        
+        if(conversationLanguage != null){
+            pd.getConfiguration().put(ProcessingData.Configuration.LANGUAGE, conversationLanguage);            
+        }
+        
         final long start = System.currentTimeMillis();
         pipeline.forEach(p -> {
             log.debug(" -> calling {}", p.getClass().getSimpleName());
@@ -139,13 +183,13 @@ public class PrepareService {
                 log.trace("  <- completed {}", p.getClass().getSimpleName());
             } catch (ProcessingException e) {
                 log.warn("Unable to process {} with Processor {} (class: {}) ", conversation, p, p.getClass().getName());
+                log.debug("STACKTRACE", e);
                 //TODO: check if this was a required or an optional processor
             }
         });
-        log.debug("prepared Conversation[id:{}] in {}ms", conversation.getId(), start-System.currentTimeMillis());
-        conversation.getMeta().setLastMessageAnalyzed(conversation.getMessages().size()-1);
-        log.trace("set lastMessageAnalyzed: {}", conversation.getMeta().getLastMessageAnalyzed());
+        log.debug("analysed Conversation[id:{}] in {}ms", conversation.getId(), start-System.currentTimeMillis());
+        //now sort the Tokens
+        Collections.sort(analysis.getTokens());
+        return analysis;
     }
-
-    
 }

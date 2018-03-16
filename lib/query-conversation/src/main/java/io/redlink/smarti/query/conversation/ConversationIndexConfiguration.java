@@ -33,7 +33,7 @@ public class ConversationIndexConfiguration {
      * The current conversation index version. Needs to be increased on schema.xml
      * or software updates that do require a full re-index
      */
-    public static final int CONVERSATION_INDEX_VERSION = 1; //start with 1 after introducing this feature with #150
+    public static final int CONVERSATION_INDEX_VERSION = 5; //v5 to fix #207
     
     public static final String FIELD_ID = "id";
     /**
@@ -41,6 +41,7 @@ public class ConversationIndexConfiguration {
      * updates that require a full re-index can be detected on startup
      */
     public static final String FIELD_INDEX_VERSION = "index_version";
+    public static final String FIELD_COMPLETED = "completed";
     public static final String FIELD_TYPE = "type";
     public static final String TYPE_MESSAGE = "message";
     public static final String TYPE_CONVERSATION = "conversation";
@@ -54,8 +55,8 @@ public class ConversationIndexConfiguration {
     public static final String FIELD_START_TIME = "start_time";
     public static final String FIELD_END_TIME = "end_time";
     public static final String FIELD_CONVERSATION_ID = "conversation_id";
-    public static final String FIELD_MESSAGE_ID = "message_id";
-    public static final String FIELD_MESSAGE_IDX = "message_idx";
+    public static final String FIELD_MESSAGE_IDS = "message_ids";
+    public static final String FIELD_MESSAGE_IDXS = "message_idxs";
     
     public static final String FIELD_SYNC_DATE = "sync_date";
     /**
