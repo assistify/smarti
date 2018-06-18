@@ -1,0 +1,32 @@
+defaults: &defaults
+  working_directory: ~/repo
+
+version: 2
+jobs:
+  build:
+    docker:
+      - image: circleci/openjdk:8-jdk
+      - image: circleci/mongo:3.4.15
+    
+    dependencies:
+      pre:
+        sudo apt-get rpm pbzip2 ruby ruby-sass ruby-compass
+
+    environment:
+      # Customize the JVM maximum heap limit
+      MAVEN_OPTS: -Xmx3200m
+
+    steps:
+      - checkout
+
+      # run tests!
+      - run: mvn -B -f dist/ install -Pdeb,rpm,docker
+
+      - persist_to_workspace:
+          root: ~/repo/
+          paths:
+            - application/target/*-exec.jar
+            - application/target/*-solrcores.zip
+            - dist/target/*.deb
+            - dist/target/rpm/smarti/RPMS/noarch/*.rpm
+            - dist/target/*.docker.tbz2
