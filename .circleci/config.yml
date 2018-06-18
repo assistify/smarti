@@ -4,13 +4,11 @@ defaults: &defaults
 version: 2
 jobs:
   build:
-    docker:
-      - image: circleci/openjdk:8-jdk
-      - image: circleci/mongo:3.4.15
-    
-    dependencies:
-      pre:
-        sudo apt-get rpm pbzip2 ruby ruby-sass ruby-compass
+    <<: *defaults
+    docker:  
+      - image: circleci/openjdk:8-jdk-node-browsers
+      - image: mongo:3.4
+        command: [mongod, --nojournal, --noprealloc, --smallfiles, --replSet=rs0]
 
     environment:
       # Customize the JVM maximum heap limit
@@ -19,8 +17,36 @@ jobs:
     steps:
       - checkout
 
-      # run tests!
-      - run: mvn -B -f dist/ install -Pdeb,rpm,docker
+      - run:
+          name: Install dependencies
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y rpm pbzip2 ruby ruby-sass ruby-compass
+
+      # Download and cache dependencies
+      - restore_cache:
+          keys:
+          - v1-dependencies-{{ checksum "pom.xml" }}
+          # fallback to using the latest cache if no exact match is found
+          - v1-dependencies-
+
+      - run:
+          name: Build & Test
+          command: |
+            mvn -B clean install -Dquick
+
+      - run:
+          name: dist
+          command: |
+            mvn -B -f dist/ install -Pdeb,rpm,docker
+
+      - save_cache:
+          paths:
+            - ~/.m2
+            - frontend/src/bower_components
+            - frontend/src/node_modules
+            - integration/rocket-chat/node_modules
+          key: v1-dependencies-{{ checksum "pom.xml" }}
 
       - persist_to_workspace:
           root: ~/repo/
