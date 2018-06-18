@@ -53,12 +53,12 @@ public class Conversation {
 //    @JsonIgnore
 //    private String channelId;
 
-    @Indexed
     @ApiModelProperty(notes="The Smarti client owning this conversation. Set during creation. MUST NOT be changed "
             + "afterwadrs. If the authenticated user is assigned to a single client (always the case for tokens) the "
             + "owner is set by the server. If a owner is parsed it MUST correspond to one of the clients the "
             + "authenticated user is assigned to.")
     @JsonIgnore
+    @Indexed
     private ObjectId owner;
     
     @ApiModelProperty
@@ -82,24 +82,44 @@ public class Conversation {
     private Context context = new Context();
 
     @ApiModelProperty(readOnly=true,notes="Server assigned modification date")
+    @Indexed
     private Date lastModified = null;
+    
+    @JsonIgnore
+    @Indexed(sparse=false)
+    private final Date deleted;
 
     public Conversation(){
-        this(null, null);
+        this(null, null, null);
+    }
+    
+    public Conversation(ObjectId id, ObjectId owner) {
+        this(id,owner,null);
     }
     
     @PersistenceConstructor
-    public Conversation(ObjectId id, ObjectId owner){
+    public Conversation(ObjectId id, ObjectId owner, Date deleted){
         this.id = id;
         this.owner = owner;
+        this.deleted = deleted;
     }
     
+
     public ObjectId getId() {
         return id;
     }
     
     public void setId(ObjectId id) {
         this.id = id;
+    }
+    
+    /**
+     * If not <code>null</code> this conversation is marked as deleted
+     * @return the date when this conversation was marked as deleted or 
+     * <code>null</code> if not 
+     */
+    public Date getDeleted() {
+        return deleted;
     }
     
     /**

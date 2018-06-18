@@ -21,8 +21,11 @@ import com.google.common.collect.Lists;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
 import com.mongodb.WriteResult;
+
+import io.redlink.smarti.exception.NotFoundException;
 import io.redlink.smarti.model.Conversation;
 import io.redlink.smarti.model.ConversationMeta;
+import io.redlink.smarti.model.ConversationMeta.Status;
 import io.redlink.smarti.model.Message;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
@@ -33,6 +36,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.Sort.Direction;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.AggregationOperation;
 import org.springframework.data.mongodb.core.aggregation.AggregationResults;
 import org.springframework.data.mongodb.core.aggregation.GroupOperation;
 import org.springframework.data.mongodb.core.aggregation.ProjectionOperation;
@@ -75,7 +79,7 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
 
     @Override
     public List<ObjectId> findConversationIDs() {
-        final Query query = new Query();
+        final Query query = new Query(getNotDeletedCriteria());
         query.fields().include("id");
 
         return Lists.transform(
@@ -84,16 +88,19 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
         );
     }
 
+
     @Override
     public Conversation appendMessage(Conversation conversation, Message message) {
         final Query isMessageEdit = new Query(Criteria.where("_id").is(conversation.getId()))
+                .addCriteria(getNotDeletedCriteria())
                 .addCriteria(Criteria.where("messages._id").is(message.getId()));
 
         final Query query;
         final Update update;
         if (mongoTemplate.exists(isMessageEdit, Conversation.class)) {
             return updateMessage(conversation.getId(), message);
-        } else {
+        } else if(mongoTemplate.exists(new Query(Criteria.where("_id").is(conversation.getId()))
+                .addCriteria(getNotDeletedCriteria()), Conversation.class)){
             query = new Query();
             query.addCriteria(Criteria.where("_id").is(conversation.getId()));
             query.addCriteria(Criteria.where("messages").size(conversation.getMessages().size()));
@@ -101,6 +108,8 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
             update = new Update();
             update.addToSet("messages", message)
                     .currentDate("lastModified");
+        } else { //conversation not present or already marked as deleted
+            throw new NotFoundException(Conversation.class, conversation.getId());
         }
 
         final WriteResult writeResult = mongoTemplate.updateFirst(query, update, Conversation.class);
@@ -114,6 +123,7 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
     @Override
     public Conversation updateMessage(ObjectId conversationId, Message message) {
         final Query query = new Query(Criteria.where("_id").is(conversationId))
+                .addCriteria(getNotDeletedCriteria())
                 .addCriteria(Criteria.where("messages._id").is(message.getId()));
 
         final Update update = new Update()
@@ -123,6 +133,9 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
         final WriteResult writeResult = mongoTemplate.updateFirst(query, update, Conversation.class);
         if (writeResult.getN() == 1) {
             return mongoTemplate.findById(conversationId, Conversation.class);
+        } else if(mongoTemplate.exists(new Query(Criteria.where("_id").is(conversationId))
+                .addCriteria(getNotDeletedCriteria()), Conversation.class)){
+            throw new NotFoundException(Conversation.class, conversationId);
         } else {
             return null;
         }
@@ -131,9 +144,9 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
     @Override
     public Conversation saveIfNotLastModifiedAfter(Conversation conversation, Date lastModified) {
         
-        final Query query = new Query();
-        query.addCriteria(Criteria.where("_id").is(conversation.getId()));
-        query.addCriteria(Criteria.where("lastModified").lte(lastModified));
+        final Query query = new Query(Criteria.where("_id").is(conversation.getId()))
+            .addCriteria(getNotDeletedCriteria())
+            .addCriteria(Criteria.where("lastModified").lte(lastModified));
 
         BasicDBObject data = new BasicDBObject();
         mongoTemplate.getConverter().write(conversation, data);
@@ -146,6 +159,9 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
         final WriteResult writeResult = mongoTemplate.updateFirst(query, update, Conversation.class);
         if (writeResult.getN() == 1) {
             return mongoTemplate.findById(conversation.getId(), Conversation.class);
+        } else if(mongoTemplate.exists(new Query(Criteria.where("_id").is(conversation.getId()))
+                .addCriteria(getNotDeletedCriteria()), Conversation.class)){
+            throw new NotFoundException(Conversation.class, conversation.getId());
         } else {
             throw new ConcurrentModificationException(
                     String.format("Conversation %s has been modified after %tF_%<tT.%<tS (%tF_%<tT.%<tS)", conversation.getId(), lastModified, conversation.getLastModified()));
@@ -154,8 +170,8 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
 
     @Override
     public List<ObjectId> findConversationIDsByUser(String userId) {
-        final Query query = new Query();
-        query.addCriteria(where("user.id").is(userId));
+        final Query query = new Query(where("user.id").is(userId))
+                .addCriteria(getNotDeletedCriteria());
         query.fields().include("id");
 
         return Lists.transform(
@@ -166,8 +182,8 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
 
     @Override
     public ObjectId findCurrentConversationIDByChannelID(String channelId) {
-        final Query query = new Query();
-        query.addCriteria(where("channelId").is(channelId))
+        final Query query = new Query(where("channelId").is(channelId))
+                .addCriteria(getNotDeletedCriteria())
                 .addCriteria(where("meta.status").ne(ConversationMeta.Status.Complete));
         query.fields().include("id");
         query.with(new Sort(Direction.DESC, "lastModified"));
@@ -183,12 +199,14 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
     @Override
     public Conversation adjustMessageVotes(ObjectId conversationId, String messageId, int delta) {
         final Query query = new Query(Criteria.where("_id").is(conversationId))
+                .addCriteria(getNotDeletedCriteria())
                 .addCriteria(Criteria.where("messages._id").is(messageId));
         final Update update = new Update()
-                .inc("messages.$.votes", delta);
+                .inc("messages.$.votes", delta)
+                .currentDate("lastModified");
 
-        mongoTemplate.updateFirst(query, update, Conversation.class);
-
+        WriteResult result = mongoTemplate.updateFirst(query, update, Conversation.class);
+        if(result.getN() < 1) return null;
         return mongoTemplate.findById(conversationId, Conversation.class);
     }
 
@@ -199,7 +217,8 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
 
     @Override
     public Conversation updateConversationField(ObjectId conversationId, String field, Object data) {
-        final Query query = new Query(Criteria.where("_id").is(conversationId));
+        final Query query = new Query(Criteria.where("_id").is(conversationId))
+                .addCriteria(getNotDeletedCriteria());
         final Update update = new Update()
                 .set(field, data)
                 .currentDate("lastModified");
@@ -212,7 +231,9 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
     
     @Override
     public Conversation deleteConversationField(ObjectId conversationId, String field) {
-        final Query query = new Query(Criteria.where("_id").is(conversationId));
+        final Query query = new Query(Criteria.where("_id").is(conversationId))
+                .addCriteria(getNotDeletedCriteria());
+        
         final Update update = new Update()
                 .unset(field)
                 .currentDate("lastModified");
@@ -225,7 +246,8 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
 
     @Override
     public boolean deleteMessage(ObjectId conversationId, String messageId) {
-        final Query query = new Query(Criteria.where("_id").is(conversationId));
+        final Query query = new Query(Criteria.where("_id").is(conversationId))
+                .addCriteria(getNotDeletedCriteria());
         final Update update = new Update()
                 .pull("messages", new BasicDBObject("_id", messageId))
                 .currentDate("lastModified");
@@ -237,6 +259,7 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
     @Override
     public Conversation updateMessageField(ObjectId conversationId, String messageId, String field, Object data) {
         final Query query = new Query(Criteria.where("_id").is(conversationId))
+                .addCriteria(getNotDeletedCriteria())
                 .addCriteria(Criteria.where("messages._id").is(messageId));
         final Update update = new Update()
                 .set("messages.$." + field, data)
@@ -262,7 +285,8 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
         return mongoTemplate.aggregate(aggregation, Message.class).getUniqueMappedResult();
         */
 
-        final Conversation conversation = mongoTemplate.findById(conversationId, Conversation.class);
+        final Conversation conversation = mongoTemplate.findOne(Query.query(where("_id").is(conversationId))
+                .addCriteria(getNotDeletedCriteria()), Conversation.class);
         if (conversation == null) {
             return null;
         } else {
@@ -274,15 +298,16 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
 
     @Override
     public boolean exists(ObjectId conversationId, String messageId) {
-        final Query query = Query.query(Criteria
-                .where("_id").is(conversationId)
-                .and("messages._id").is(messageId));
+        final Query query = Query.query(where("_id").is(conversationId))
+                .addCriteria(getNotDeletedCriteria())
+                .addCriteria(where("messages._id").is(messageId));
         return mongoTemplate.exists(query, Conversation.class);
     }
 
     @Override
     public List<String> findTagsByPattern(Pattern pattern, int limit) {
         final Aggregation agg = newAggregation(
+                match(getNotDeletedCriteria()), //ignore deleted conversations
                 project("meta.tags"),
                 unwind("tags"),
                 group("tags").count().as("count"),
@@ -306,6 +331,7 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
     @Override
     public List<Pair<String, Long>> findTags(long limit, long offset) {
         final Aggregation agg = newAggregation(
+                match(getNotDeletedCriteria()), //ignore deleted conversations
                 project("meta.tags"),
                 unwind("tags"),
                 group("tags").count().as("count"),
@@ -321,13 +347,47 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
                 .collect(Collectors.toList());
     }
     
+    @Override
+    public boolean markAsDeleted(ObjectId id) {
+        WriteResult result = mongoTemplate.updateFirst(
+                Query.query(where("_id").is(id))
+                    .addCriteria(getNotDeletedCriteria()), //do not mark deleted twice
+                new Update()
+                    .unset("messages") //clean all the messages (for privacy reasons)
+                    .unset("user") //clean the user information
+                    .set("meta.status", Status.Deleted.name()) //set the status to deleted
+                    .currentDate("lastModified") //update the lastModified (to notify about the deletion)
+                    .currentDate("deleted"), //mark as deleted (use date to allow physical deletions after period)
+                Conversation.class);
+        if(log.isTraceEnabled()){
+            if(result.getN() > 0){
+                log.trace("marked conversation {} as deleted", id);
+            } else {
+                log.trace("no conversation {} found to be marked as deleted", id);
+            }
+        }
+        return result.getN() > 0;
+    }
+    
+    @Override
+    public Conversation findLegacyConversation(ObjectId ownerId, String contextType, String channelId) {
+        Query query = new Query();
+        query.addCriteria(where("owner").is(ownerId));
+        query.addCriteria(where("meta.properties.channel_id").is(channelId));
+        query.addCriteria(where("context.contextType").is(contextType));
+        query.addCriteria(getNotDeletedCriteria());
+
+        return mongoTemplate.findOne(query, Conversation.class);
+    }
+
+    
     private static final ProjectionOperation ID_MODIFIED_PROJECTION = Aggregation.project("id","lastModified");
     private static final GroupOperation GROUP_MODIFIED = Aggregation.group()
             .addToSet("id").as("ids")
             .max("lastModified").as("lastModified");
     
     @Override
-    public UpdatedIds<ObjectId> updatedSince(Date date) {
+    public UpdatedIds<ObjectId> updatedSince(Date date, long limit) {
         //IMPLEMENTATION NOTES (Rupert Westenthaler, 2017-07-19):
         // * we need to use $gte as we might get additional updates in the same ms ...
         // * Instead of $max: modified we would like to use the current Server time of the
@@ -336,13 +396,7 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
         //   Entities updated at lastModified on every call. To avoid this a Workaround is used
         //   that increases the reported lastModified time by 1ms in cases no update was done
         //   since the last call (meaning the parsed date equals the lastModified)
-        Aggregation agg = date != null ? //if a date is parsed search for updated after this date
-                Aggregation.newAggregation(Aggregation.match(Criteria.where("lastModified").gte(date)),
-                        ID_MODIFIED_PROJECTION, GROUP_MODIFIED) :
-                    //else return all updates
-                    Aggregation.newAggregation(ID_MODIFIED_PROJECTION, GROUP_MODIFIED);
-        log.trace("UpdatedSince Aggregation: {}", agg);
-        AggregationResults<UpdatedIds> aggResult = mongoTemplate.aggregate(agg,Conversation.class, 
+        AggregationResults<UpdatedIds> aggResult = mongoTemplate.aggregate(getUpdatedSinceAggregation(date, limit),Conversation.class, 
                 UpdatedIds.class);
         if(log.isTraceEnabled()){
             log.trace("updated Conversations : {}", aggResult.getMappedResults());
@@ -360,14 +414,25 @@ public class ConversationRepositoryImpl implements ConversationRepositoryCustom 
             }    
         }
     }
-
-    @Override
-    public Conversation findLegacyConversation(ObjectId ownerId, String contextType, String channelId) {
-        Query query = new Query();
-        query.addCriteria(where("owner").is(ownerId));
-        query.addCriteria(where("meta.properties.channel_id").is(channelId));
-        query.addCriteria(where("context.contextType").is(contextType));
-
-        return mongoTemplate.findOne(query, Conversation.class);
+    
+    private Aggregation getUpdatedSinceAggregation(Date since, long limit) {
+        List<AggregationOperation> ops = new LinkedList<>();
+        if(since != null){
+            ops.add(Aggregation.match(Criteria.where("lastModified").gte(since)));
+        }
+        ops.add(Aggregation.sort(Direction.ASC,"lastModified"));
+        if(limit > 0){
+            ops.add(Aggregation.limit(limit));
+        }
+        ops.add(ID_MODIFIED_PROJECTION);
+        ops.add(GROUP_MODIFIED);
+        Aggregation agg = Aggregation.newAggregation(ops);
+        log.trace("UpdatedSince Aggregation: {}", agg);
+        return agg;
     }
+    
+    private Criteria getNotDeletedCriteria() {
+        return Criteria.where("deleted").is(null);
+    }
+
 }

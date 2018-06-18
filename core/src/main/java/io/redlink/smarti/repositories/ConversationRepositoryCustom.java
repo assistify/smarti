@@ -72,6 +72,13 @@ public interface ConversationRepositoryCustom {
     Conversation findLegacyConversation(ObjectId ownerId, String contextType, String channelId);
 
     /**
+     * Marks a conversation as deleted by setting the deleted date and removing
+     * most of its information. 
+     * @param id the id of the conversation to mark as deleted
+     */
+    boolean markAsDeleted(ObjectId id);
+    
+    /**
      * Provides the ids of entities that where updated
      * since the parsed date. In addition it provides the
      * date of the latest update (to be used by further calls)
@@ -79,6 +86,6 @@ public interface ConversationRepositoryCustom {
      * @return the updated entities and the date of the last update
      */
     @Transient
-    UpdatedIds updatedSince(Date date);
+    UpdatedIds updatedSince(Date date, long limit);
 
 }

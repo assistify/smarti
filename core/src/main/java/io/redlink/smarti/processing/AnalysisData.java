@@ -25,11 +25,13 @@ import io.redlink.nlp.model.Section;
 import io.redlink.nlp.model.section.SectionTag;
 import io.redlink.nlp.model.section.SectionType;
 import io.redlink.smarti.model.Analysis;
+import io.redlink.smarti.model.Analysis.AnalysisContext;
 import io.redlink.smarti.model.Client;
 import io.redlink.smarti.model.Conversation;
 import io.redlink.smarti.model.Message;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.stream.Collectors;
@@ -55,32 +57,52 @@ public class AnalysisData extends io.redlink.nlp.api.ProcessingData {
         }
     }
     
-    public static AnalysisData create(Conversation conversation, Client client){
-        return create(conversation, client, -1);
+    public static AnalysisData create(Conversation conversation, Client client, MessageContentProcessor mcp){
+        return create(conversation, client, mcp, -1);
     }
-    public static AnalysisData create(Conversation conversation, Client client, int contextSize){
-        return create(conversation, new Analysis(client.getId(), conversation.getId(),conversation.getLastModified()), contextSize);
+    public static AnalysisData create(Conversation conversation, Client client, MessageContentProcessor mcp, int contextSize){
+        return create(conversation, new Analysis(client.getId(), conversation.getId(),conversation.getLastModified()), mcp, contextSize);
     }
     
-    public static AnalysisData create(Conversation conversation, Analysis analysis){
-        return create(conversation, analysis,-1);
+    public static AnalysisData create(Conversation conversation, Analysis analysis, MessageContentProcessor mcp){
+        return create(conversation, analysis, mcp,-1);
     }
-    public static AnalysisData create(Conversation conversation, Analysis analysis, int contextSize){
+    public static AnalysisData create(Conversation conversation, Analysis analysis, MessageContentProcessor mcp, int contextSize){
         AnalyzedTextBuilder atb = AnalyzedText.build();
         int numMessages = conversation.getMessages().size();
         boolean first = true;
         int startIdx = contextSize <= 0 ? 0 : Math.max(0, numMessages - contextSize);
         log.trace("analysisContext: [{}..{}](size: {})", startIdx, numMessages-1, contextSize);
+        analysis.setContext(new AnalysisContext(startIdx, numMessages));
+        int skipped = 0;
         for(int i=startIdx; i < numMessages; i++){
             Message message = conversation.getMessages().get(i);
-            if(StringUtils.isNoneBlank(message.getContent())){
-                Section section = atb.appendSection(first ? null : "\n", message.getContent(), "\n");
-                section.addAnnotation(MESSAGE_IDX_ANNOTATION, i);
-                section.addAnnotation(MESSAGE_ANNOTATION, message);
-                section.addAnnotation(SECTION_ANNOTATION, new SectionTag(SectionType.paragraph, "message"));
-                first = false;
-            } //else ignore blank messages for analysis
+            log.trace("message idx: {}", i);
+            //#203: if the skipAnalysis attribute is set we do not analyse the content of this message
+            boolean skipAnalysis = Boolean.parseBoolean(
+                    Objects.toString(message.getMetadata().get(Message.Metadata.SKIP_ANALYSIS), "false"));
+            log.trace("skip analysis: {}", skipAnalysis);
+            if(!skipAnalysis){
+                log.trace("message Content: {}", message.getContent());
+                final String content;
+                if(mcp == null){
+                    content = message.getContent();
+                } else {
+                    content = mcp.processMessageContent(analysis.getClient(), conversation, message);
+                    log.trace(" processed Content: {}", content);
+                }
+                if(StringUtils.isNotBlank(content)){
+                    Section section = atb.appendSection(first ? null : "\n", content, "\n");
+                    section.addAnnotation(MESSAGE_IDX_ANNOTATION, i);
+                    section.addAnnotation(MESSAGE_ANNOTATION, message);
+                    section.addAnnotation(SECTION_ANNOTATION, new SectionTag(SectionType.paragraph, "message"));
+                    first = false;
+                } //else ignore empty content
+            } else { //else ignore messages marked as skipAnalysis
+                skipped++;
+            }
         }
+        analysis.getContext().setSkipped(skipped);
         return new AnalysisData(conversation, analysis, atb.create());
     }
     /**

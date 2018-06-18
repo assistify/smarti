@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -92,6 +93,27 @@ public class ConversationIndexer implements ConversytionSyncCallback {
 
     //TODO: make configurable
     private static final Set<String> NOT_INDEXED_ENVIRONMENT_FIELDS = Collections.emptySet();
+    
+    /*
+     * Constants defining the context for messages
+     */
+    //We target more as 100 chars are context
+    protected static final int MIN_CONTEXT_LENGTH = 100;
+    //We try to optimize for about 300 chars of context
+    protected static final int CONTEXT_LENGTH = 300;
+    //Include at least the last two messages (the current and an other)
+    protected static final int MIN_INCL_MSGS = 2;
+    //Include a maximum of 10 messages
+    protected static final int MAX_INCL_MSGS = 10;
+    //include at least one message before the current one
+    protected static final int MIN_INCL_BEFORE = 1;
+    //include at least one message after the current one
+    protected static final int MIN_INCL_AFTER = 1;
+    //Include at least all messages of the last 3 minutes
+    protected static final long MIN_AGE = TimeUnit.MINUTES.toMillis(3);
+    //Include no messages older as a day (except for MIN_INCL_BEFORE and MIN_INCL_AFTER)
+    protected static final long MAX_AGE = TimeUnit.DAYS.toMillis(1);
+
 
     @Value("${smarti.index.conversation.commitWithin:0}") //<0 ... use default
     private int commitWithin = DEFAULT_COMMIT_WITHIN; 
@@ -197,11 +219,11 @@ public class ConversationIndexer implements ConversytionSyncCallback {
         log.debug("StoreServiceEvent for {}", storeEvent.getConversationId());
         if(storeEvent.getOperation() == Operation.SAVE){
             if(storeEvent.getConversationStatus() == Status.Complete){
-                log.debug("  - SAVE operation of a COMPLETED conversation");
+                log.debug("  - SAVE operation of a COMPLETED conversation[id: {}]", storeEvent.getConversationId());
                 indexConversation(conversationService.getConversation(storeEvent.getConversationId()), true);
             } //else we do not index uncompleted conversations
         } else if(storeEvent.getOperation() == Operation.DELETE){
-            log.debug("  - DELETE operation");
+            log.debug("  - DELETE operation for conversation[id:{}]", storeEvent.getConversationId());
             removeConversation(storeEvent.getConversationId(), true);
         } else {
             log.debug("  - {} ignored", storeEvent);
@@ -211,10 +233,13 @@ public class ConversationIndexer implements ConversytionSyncCallback {
     public void removeConversation(Conversation conversation, boolean commit) {
         removeConversation(conversation.getId(), commit);
     }
+    @Override
+    public void removeConversation(ObjectId conversationId, Date syncDate) {
+        removeConversation(conversationId, false);
+    }
     public void removeConversation(ObjectId conversationId, boolean commit) {
         try (SolrClient solr = solrServer.getSolrClient(conversationCore)){
-            solr.deleteByQuery(String.format("%s:%s OR %s:%s", FIELD_ID, conversationId.toHexString(), 
-                    FIELD_CONVERSATION_ID, conversationId.toHexString()),commitWithin);
+            solr.deleteByQuery(getDeleteQuery(conversationId), commitWithin);
             if(commit){
                 solr.commit();
             }
@@ -258,8 +283,12 @@ public class ConversationIndexer implements ConversytionSyncCallback {
     }
 
     private String getDeleteQuery(Conversation conversation) {
-        return String.format("%s:%s OR %s:%s", FIELD_ID, conversation.getId().toHexString(), 
-                FIELD_CONVERSATION_ID, conversation.getId().toHexString());
+        return getDeleteQuery(conversation.getId());
+    }
+
+    private String getDeleteQuery(ObjectId conversationId) {
+        return String.format("%s:%s OR %s:%s", FIELD_ID, conversationId.toHexString(), 
+                FIELD_CONVERSATION_ID, conversationId.toHexString());
     }
 
     private SolrInputDocument toSolrInputDocument(Conversation conversation) {
@@ -274,13 +303,15 @@ public class ConversationIndexer implements ConversytionSyncCallback {
         solrConversation.setField(FIELD_MODIFIED, conversation.getLastModified());
         
         //add owner and context information
-        solrConversation.setField(FIELD_OWNER, conversation.getOwner().toHexString());
+        if(conversation.getOwner() != null){ //conversations without owner SHOULD NOT exist, but we found a NPE in a log ...
+            solrConversation.setField(FIELD_OWNER, conversation.getOwner().toHexString());
+        }
         addContextFields(solrConversation, conversation);
 
         solrConversation.setField(FIELD_MESSAGE_COUNT, conversation.getMessages().size());
         if(!conversation.getMessages().isEmpty()) {
             solrConversation.setField(FIELD_START_TIME, conversation.getMessages().get(0).getTime());
-            solrConversation.setField(FIELD_END_TIME, Iterables.getLast(conversation.getMessages()).getTime());
+            solrConversation.setField(FIELD_END_TIME, conversation.getMessages().get(conversation.getMessages().size() -1).getTime());
 
             List<SolrInputDocument> messages = new ArrayList<>(conversation.getMessages().size());
             Message prevMessage = null;
@@ -289,12 +320,9 @@ public class ConversationIndexer implements ConversytionSyncCallback {
                 final Message m = conversation.getMessages().get(i);
                 if (!m.isPrivate()) {
                     if ((prevMessage != null) && (prevSolrInputDoc != null)
-                            // Same user
-                            && Objects.equals(m.getUser(), prevMessage.getUser())
-                            // "same" user
-                            && Objects.equals(m.getOrigin(), prevMessage.getOrigin())
-                            // within X seconds
-                            && m.getTime().before(DateUtils.addSeconds(prevMessage.getTime(), messageMergeTimeout))) {
+                            && Objects.equals(m.getUser(), prevMessage.getUser()) // Same user
+                            && Objects.equals(m.getOrigin(), prevMessage.getOrigin()) // "same" user
+                            && m.getTime().before(DateUtils.addSeconds(prevMessage.getTime(), messageMergeTimeout))) { // within X seconds
                         // merge messages;
                         prevSolrInputDoc = mergeSolrUInputDoc(prevSolrInputDoc, toSolrInputDocument(m, i, conversation));
 
@@ -307,8 +335,12 @@ public class ConversationIndexer implements ConversytionSyncCallback {
 
                 }
             }
-            //we want the content of the messages also stored with the conversation (e.g. for highlighting)
-            messages.forEach(m -> solrConversation.addField(FIELD_MESSAGES, m.getFieldValues(FIELD_MESSAGE)));
+            messages.forEach(m -> {
+                //we want the content of the messages also stored with the conversation (e.g. for highlighting)
+                solrConversation.addField(FIELD_MESSAGES, m.getFieldValues(FIELD_MESSAGE));
+                //in addition store the content of the conversation also in the Solr MLT field
+                solrConversation.addField(FIELD_MLT_CONTEXT, m.getFieldValues(FIELD_MESSAGE));
+            });
             solrConversation.addChildDocuments(messages);
         }
 
@@ -345,6 +377,18 @@ public class ConversationIndexer implements ConversytionSyncCallback {
         solrMsg.setField(FIELD_TIME, message.getTime());
         solrMsg.setField(FIELD_VOTE, message.getVotes());
 
+        //message context (for context based similarity search)
+        int[] context = ConversationContextUtils.getMessageContext(conversation.getMessages(), i, 
+                MIN_CONTEXT_LENGTH, CONTEXT_LENGTH, MIN_INCL_MSGS, MAX_INCL_MSGS, MIN_INCL_BEFORE, MIN_INCL_AFTER, 
+                MIN_AGE, MAX_AGE);
+        solrMsg.setField(FIELD_MESSAGE_CONTEXT_START, context[0]);
+        solrMsg.setField(FIELD_MESSAGE_CONTEXT_END, context[1]);
+        for(Message ctxMsg : conversation.getMessages().subList(context[0], context[1])){
+            if(!ctxMsg.isPrivate()){
+                solrMsg.addField(FIELD_MLT_CONTEXT, ctxMsg.getContent());
+            } //else do not use private messages - not even as context!
+        }
+        
         // TODO: Add keywords, links, ...
 
         return solrMsg;
@@ -389,13 +433,13 @@ public class ConversationIndexer implements ConversytionSyncCallback {
     public void syncIndex() {
         Instant now = Instant.now();
         if(indexTask != null){
-            log.debug("sync conversation index with Repository");
             if(indexTask.isCompleted()) {
+                log.debug("execute sync of conversation index with repository");
                 indexerPool.execute(indexTask);
             } else if(indexTask.isActive()){
-                log.info("skipping Term Index sync at {} as previouse task has not yet completed!", now);
+                log.info("skipping conversation index sync at {} as previouse task has not yet completed!", now);
             } else {
-                log.info("previouse sync of Term Index is still enqueued at {}!", now);
+                log.info("previouse sync of conversation index is still enqueued at {}!", now);
             }
         }
     }
@@ -408,7 +452,7 @@ public class ConversationIndexer implements ConversytionSyncCallback {
             if(indexTask.isCompleted()) {
                 indexerPool.execute(indexTask); //and start it when not running
             } else if(indexTask.isActive()){ //when running the full rebuild will be done on the next run
-                log.info("enqueued full term index rebuild as an update is currently running");
+                log.info("enqueued full Conversation index rebuild as an update is currently running");
             }
         } else { //no cloud sync active. So re-index via the store service
             log.info("starting scheduled full rebuild of the conversation index");
@@ -473,7 +517,7 @@ public class ConversationIndexer implements ConversytionSyncCallback {
                 if(Objects.equals(this.lastSync, lastSync)){
                     return true;
                 } else if(active.get()){
-                    log.info("Unable to set lastSync to {} as the term indexer is currently active!",
+                    log.info("Unable to set lastSync to {} as the conversation indexer is currently active!",
                             lastSync == null ? null : lastSync.toInstant());
                     return false;
                 } else {
@@ -517,7 +561,7 @@ public class ConversationIndexer implements ConversytionSyncCallback {
                     syncData = cloudSync.sync(ConversationIndexer.this, lastSync);
                 }
                 if(syncData.getCount() > 0){
-                    log.debug("updated Conversation Index - {}", syncData);
+                    log.debug("performed {} updates in the Conversation Index - {}", syncData.getCount(), syncData);
                 } else {
                     log.debug("no update for Conversation Index - {}", syncData);
                 }

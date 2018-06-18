@@ -25,6 +25,11 @@ import org.springframework.context.ApplicationEvent;
  */
 public class StoreServiceEvent extends ApplicationEvent {
 
+    /**
+     * 
+     */
+    private static final long serialVersionUID = 2993017858379839079L;
+
     public enum Operation {
         SAVE,
         DELETE
@@ -63,6 +68,12 @@ public class StoreServiceEvent extends ApplicationEvent {
 
     public static  StoreServiceEvent delete(ObjectId conversationId, Object source) {
         return new StoreServiceEvent(source, Operation.DELETE, conversationId, null);
+    }
+
+    @Override
+    public String toString() {
+        return "StoreServiceEvent [operation=" + operation + ", conversationId=" + conversationId
+                + ", conversationStatus=" + conversationStatus + "]";
     }
 
 
