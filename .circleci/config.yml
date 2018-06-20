@@ -93,6 +93,44 @@ jobs:
           name: Publish assets
           command: |
             bash .circleci/deploy-assistify-smarti.sh
+  
+  publish-docker:
+    docker:
+      - image: docker:17.05.0-ce-git
+
+    steps:
+      - attach_workspace:
+          at: /tmp
+
+      - checkout
+
+      - setup_remote_docker
+
+      - run:
+          command: docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD}
+      - run:
+          command: |
+            docker load build/smarti-${SMARTI_VERSION}.docker.tbz2
+            docker tag redlinkgmbh/smarti:${SMARTI_VERSION} assistify/smarti
+            if [[ ! -z $CI_PULL_REQUEST ]]
+              then
+                docker push assistify/smarti:pr-${CIRCLE_PULL_REQUEST##*/}
+            else
+              if [[ ! -z ${CIRCLE_TAG} ]]
+                then
+                  docker push assistify/smarti:${CIRCLE_TAG}
+              else
+                if [[ ${CIRCLE_BRANCH} == develop ]]
+                  then
+                    docker push assistify/smarti:develop
+                else
+                  if [[ ${CIRCLE_BRANCH} == master ]]
+                  then
+                    docker push assistify/smarti:latest
+                  fi
+                fi
+              fi
+            fi
 
 workflows:
   version: 2
@@ -100,10 +138,8 @@ workflows:
     jobs:
       - build:
           filters:
-            branches:
-              only:
-                - develop
-                - master
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$/
       - aws-upload-artifact:
           requires:
             - build
@@ -112,3 +148,9 @@ workflows:
               only:
                 - develop
                 - master
+      - publish-docker:
+          requires:
+            - build
+          filters:
+            tags:
+              only: /^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$/
