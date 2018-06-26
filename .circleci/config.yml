@@ -56,7 +56,7 @@ jobs:
           name: docker image
           command: |
             export SMARTI_VERSION="$(mvn -B -q -N exec:exec -Dexec.executable=echo -Dexec.args='${project.version}')"
-            echo $SMARTI_VERSION > /tmp/smarti_version
+            echo $SMARTI_VERSION > /tmp/build/smarti_version
             echo $SMARTI_VERSION
             docker save redlinkgmbh/smarti:${SMARTI_VERSION} | pbzip2 > "dist/target/smarti-${SMARTI_VERSION}.docker.tbz2"
 
@@ -126,7 +126,7 @@ jobs:
           command: docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD}
       - run:
           command: |
-            export SMARTI_VERSION=$(cat /tmp/smarti_version)
+            export SMARTI_VERSION=$(cat /tmp/build/smarti_version)
             cat /tmp/build/smarti-${SMARTI_VERSION}.docker.tbz2 | docker load 
             docker tag redlinkgmbh/smarti:${SMARTI_VERSION} assistify/smarti
             if [[ ! -z $CI_PULL_REQUEST ]]
