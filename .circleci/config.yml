@@ -65,7 +65,6 @@ jobs:
             mkdir tmp
             mkdir tmp/build/
             echo $SMARTI_VERSION > tmp/build/smarti_version
-            echo $SMARTI_VERSION
             cp application/target/*-exec.jar tmp/build/
             cp application/target/*-solrcores.zip tmp/build/
             cp dist/target/*.deb tmp/build/
@@ -128,22 +127,29 @@ jobs:
           command: |
             export SMARTI_VERSION=$(cat /tmp/build/smarti_version)
             cat /tmp/build/smarti-${SMARTI_VERSION}.docker.tbz2 | docker load 
-            docker tag redlinkgmbh/smarti:${SMARTI_VERSION} assistify/smarti
             if [[ ! -z $CI_PULL_REQUEST ]]
               then
+                docker tag redlinkgmbh/smarti:${SMARTI_VERSION} assistify/smarti:pr-${CIRCLE_PULL_REQUEST##*/}
                 docker push assistify/smarti:pr-${CIRCLE_PULL_REQUEST##*/}
+                echo "pushed assistify/smarti:pr-${CIRCLE_PULL_REQUEST##*/}"
             else
               if [[ ! -z ${CIRCLE_TAG} ]]
                 then
+                  docker tag redlinkgmbh/smarti:${SMARTI_VERSION} assistify/smarti:${CIRCLE_TAG}
                   docker push assistify/smarti:${CIRCLE_TAG}
+                  echo "pushed assistify/smarti:${CIRCLE_TAG}"
               else
                 if [[ ${CIRCLE_BRANCH} == develop ]]
                   then
+                    docker tag redlinkgmbh/smarti:${SMARTI_VERSION} assistify/smarti:develop
                     docker push assistify/smarti:develop
+                    echo "pushed assistify/smarti:develop"
                 else
                   if [[ ${CIRCLE_BRANCH} == master ]]
                   then
+                    docker tag redlinkgmbh/smarti:${SMARTI_VERSION} assistify/smarti:latest
                     docker push assistify/smarti:latest
+                    echo "pushed assistify/smarti:latest"
                   fi
                 fi
               fi
