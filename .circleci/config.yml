@@ -124,7 +124,7 @@ jobs:
           command: docker login -u ${DOCKER_USER} -p ${DOCKER_PASSWORD}
       - run:
           command: |
-            docker load build/smarti-${SMARTI_VERSION}.docker.tbz2
+            cat build/smarti-${SMARTI_VERSION}.docker.tbz2 | docker load 
             docker tag redlinkgmbh/smarti:${SMARTI_VERSION} assistify/smarti
             if [[ ! -z $CI_PULL_REQUEST ]]
               then
