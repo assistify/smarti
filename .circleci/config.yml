@@ -41,7 +41,7 @@ jobs:
       - run:
           name: Build & Test
           command: |
-            mvn -B clean install
+            mvn -B clean install -U
 
       - run:
           name: dist
