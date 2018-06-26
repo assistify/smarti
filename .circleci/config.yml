@@ -1,4 +1,8 @@
 version: 2
+
+machine:
+  environment:
+    JAVA_OPTS: "-Xmx4g"
 jobs:
   build:
     docker:  
