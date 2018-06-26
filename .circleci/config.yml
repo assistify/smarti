@@ -56,8 +56,6 @@ jobs:
           name: docker image
           command: |
             export SMARTI_VERSION="$(mvn -B -q -N exec:exec -Dexec.executable=echo -Dexec.args='${project.version}')"
-            echo $SMARTI_VERSION > /tmp/build/smarti_version
-            echo $SMARTI_VERSION
             docker save redlinkgmbh/smarti:${SMARTI_VERSION} | pbzip2 > "dist/target/smarti-${SMARTI_VERSION}.docker.tbz2"
 
       - run:
@@ -66,6 +64,8 @@ jobs:
             export SMARTI_VERSION="$(mvn -B -q -N exec:exec -Dexec.executable=echo -Dexec.args='${project.version}')"
             mkdir tmp
             mkdir tmp/build/
+            echo $SMARTI_VERSION > /tmp/build/smarti_version
+            echo $SMARTI_VERSION
             cp application/target/*-exec.jar tmp/build/
             cp application/target/*-solrcores.zip tmp/build/
             cp dist/target/*.deb tmp/build/
