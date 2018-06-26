@@ -1,14 +1,14 @@
 version: 2
 
-machine:
-  environment:
-    JAVA_OPTS: "-Xmx4g"
+# machine:
+#   environment:
+#     JAVA_OPTS: "-Xmx4g"
 jobs:
   build:
     docker:  
       - image: circleci/openjdk:8-jdk-node-browsers
-      - image: mongo:3.4
-        command: [mongod, --nojournal, --noprealloc, --smallfiles]
+      # - image: mongo:3.4
+      #   command: [mongod, --nojournal, --noprealloc, --smallfiles]
 
     working_directory: ~/repo
 
@@ -45,7 +45,7 @@ jobs:
       - run:
           name: Build & Test
           command: |
-            mvn -B clean install -U
+            mvn -B clean install -Dquick
 
       - run:
           name: dist
