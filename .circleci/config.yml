@@ -31,7 +31,7 @@ jobs:
       - run:
           name: Build & Test
           command: |
-            mvn -B clean install -Dquick
+            mvn -B clean install
 
       - run:
           name: dist
