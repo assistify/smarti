@@ -56,8 +56,8 @@ jobs:
           name: docker image
           command: |
             export SMARTI_VERSION="$(mvn -B -q -N exec:exec -Dexec.executable=echo -Dexec.args='${project.version}')"
-            echo SMARTI_VERSION > /tmp/smarti_version
-            echo SMARTI_VERSION
+            echo $SMARTI_VERSION > /tmp/smarti_version
+            echo $SMARTI_VERSION
             docker save redlinkgmbh/smarti:${SMARTI_VERSION} | pbzip2 > "dist/target/smarti-${SMARTI_VERSION}.docker.tbz2"
 
       - run:
