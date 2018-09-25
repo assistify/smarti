@@ -22,11 +22,14 @@ import io.redlink.smarti.model.config.ComponentConfiguration;
 import io.redlink.smarti.services.TemplateRegistry;
 import io.redlink.solrlib.SolrCoreContainer;
 import io.redlink.solrlib.SolrCoreDescriptor;
+
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrServerException;
 import org.apache.solr.client.solrj.util.ClientUtils;
+import org.apache.solr.common.SolrException;
 import org.apache.solr.common.params.MoreLikeThisParams;
 import org.apache.solr.common.util.NamedList;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -226,12 +229,16 @@ public class ConversationSearchQueryBuilder extends ConversationQueryBuilder {
                 ConversationContextUtils.getContextStart(conv.getMessages(), 
                 MIN_CONTEXT_LENGTH, CONTEXT_LENGTH, MIN_INCL_MSGS, MAX_INCL_MSGS, MIN_AGE, MAX_AGE),
                 conv.getMessages().size()).stream()
+            .filter(m -> !MapUtils.getBoolean(m.getMetadata(), Message.Metadata.SKIP_ANALYSIS, false))
             .map(Message::getContent)
             .reduce(null, (s, e) -> {
                 if (s == null) return e;
                 return s + "\n\n" + e;
             });
         log.trace("SimilarityContext: {}", context);
+        if(StringUtils.isBlank(context)){ //fix for #2258
+            return ""; //for an empty context use an empty query
+        }
 
         //we make a MLT query to get the interesting terms
         final SolrQuery solrQuery = new SolrQuery();
@@ -287,6 +294,15 @@ public class ConversationSearchQueryBuilder extends ConversationQueryBuilder {
                     })
                     .collect(Collectors.joining(" OR "));
             }
+        } catch (SolrException solrEx) { //related to #2258 - make code more robust to unexpected errors
+            if(log.isDebugEnabled()){
+                log.warn("Unable to build ContextQuery using solrQuery: {} and context: '{}'", 
+                        solrQuery, context, solrEx);
+            } else {
+                log.warn("Unable to build ContextQuery using solrQuery: {} and context: '{}' ({} - {})", 
+                        solrQuery, context, solrEx.getClass().getSimpleName(), solrEx.getMessage());
+            }
+            return ""; //return an empty context query as fallback
         }
     }
 

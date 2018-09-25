@@ -27,6 +27,8 @@ Mongo DB is used by Smarti to store client, configuration and conversations.
 
 * `smarti.migration.mongo.script-home = /usr/share/smarti/scripts` location of the database-migration scripts. When
     using on of the provided start-scripts, the database migration will be carried out on startup.
+    
+* `smarti.storage.mongodb.maxConvMsg = 5000` the maximum number of messages for a conversation. If more as this messages are added to a conversation the oldest will be sliced. The intension of this is to keep Conversation data within the `16MB` limit of MongoDB. see https://github.com/redlink-gmbh/smarti/issues/281[Smarti #281] for more information
 
 ===== Tomcat AJP-Config
 
@@ -96,7 +98,15 @@ Allows to inject backend properties in the Frontend
 
 * `jsonp.callback = callback`: The name of the callback
 
-==== Rocket.chat Endpoint
+==== Http Callback configuration
+
+* `http.retryCount=3`
+* `http.callback.proxy.hostname=127.0.0.1`
+* `http.callback.proxy.port=8181`
+* `http.callback.proxy.scheme=http`
+
+
+For versions up to `0.6.*` the following properties where supported to configure the async. callback to Rocket.Chat
 
 * `rocketchat.proxy.hostname =`
 * `rocketchat.proxy.port = 80`

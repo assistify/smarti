@@ -57,10 +57,10 @@ public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final AnalysisRepository analysisRepository;
 
-    public ConversationService(ConversationRepository conversationRepository, Optional<AnalysisRepository> analysisRepository, Optional<ApplicationEventPublisher> eventPublisher) {
+    public ConversationService(ConversationRepository conversationRepository, Optional<AnalysisRepository> analysisRepository, ApplicationEventPublisher eventPublisher) {
         this.conversationRepository = conversationRepository;
         this.analysisRepository = analysisRepository.orElse(null);
-        this.eventPublisher = eventPublisher.orElse(null);
+        this.eventPublisher = eventPublisher;
     }
     
     /**
@@ -115,10 +115,11 @@ public class ConversationService {
     }
 
     public Conversation getConversation(Client client, ObjectId convId){
+        Preconditions.checkNotNull(convId);
         if(client != null){
-            return conversationRepository.findByOwnerAndId(client.getId(), convId);
+            return conversationRepository.findByOwnerAndIdAndDeletedIsNull(client.getId(), convId);
         } else {
-            return conversationRepository.findOne(convId);
+            return conversationRepository.findOneByIdAndDeletedIsNull(convId);
         }
     }
 
@@ -157,9 +158,9 @@ public class ConversationService {
     public Page<Conversation> listConversations(Set<ObjectId> clientIDs, int page, int pageSize) {
         final PageRequest paging = new PageRequest(page, pageSize);
         if (CollectionUtils.isNotEmpty(clientIDs)) {
-            return conversationRepository.findByOwnerIn(clientIDs, paging);
+            return conversationRepository.findByOwnerInAndDeletedIsNull(clientIDs, paging);
         } else {
-            return conversationRepository.findAll(paging);
+            return conversationRepository.findByDeletedIsNull(paging);
         }
     }
 
@@ -172,7 +173,7 @@ public class ConversationService {
     }
 
     public List<Conversation> getConversations(ObjectId owner) {
-        return conversationRepository.findByOwner(owner);
+        return conversationRepository.findByOwnerAndDeletedIsNull(owner);
     }
 
     public void importConversations(ObjectId owner, List<Conversation> conversations) {
@@ -185,7 +186,7 @@ public class ConversationService {
     }
 
     public boolean exists(ObjectId conversationId) {
-        return conversationRepository.exists(conversationId);
+        return conversationRepository.existsByDeletedIsNull(conversationId);
     }
 
     public Conversation updateStatus(ObjectId conversationId, ConversationMeta.Status newStatus) {
@@ -202,33 +203,28 @@ public class ConversationService {
     }
 
     public Conversation updateMessage(ObjectId conversationId, Message updatedMessage) {
-        Conversation con = publishSaveEvent(conversationRepository.updateMessage(conversationId, updatedMessage));
-        return con;
+        return publishSaveEvent(conversationRepository.updateMessage(conversationId, updatedMessage));
     }
 
     private Conversation publishSaveEvent(Conversation conversation) {
-        if(eventPublisher != null && conversation != null){
-            eventPublisher.publishEvent(StoreServiceEvent.save(conversation.getId(), conversation.getMeta().getStatus(), this));
-        } //no update / not saved
+        eventPublisher.publishEvent(StoreServiceEvent.save(conversation.getId(), conversation.getMeta().getStatus(), this));
         return conversation;
     }
 
-    public Conversation deleteConversation(ObjectId conversationId) {
-        final Conversation one = conversationRepository.findOne(conversationId);
-        if (one != null) {
-            conversationRepository.delete(conversationId);
-            if(eventPublisher != null){
-                eventPublisher.publishEvent(StoreServiceEvent.delete(conversationId, this));
-            }
+    public boolean deleteConversation(ObjectId conversationId) {
+        Preconditions.checkNotNull(conversationId);
+        boolean deleted = conversationRepository.markAsDeleted(conversationId);
+        if(deleted){
+            eventPublisher.publishEvent(StoreServiceEvent.delete(conversationId, this));
             if(analysisRepository != null){
                 try {
-                    analysisRepository.deleteByConversation(one.getId());
+                    analysisRepository.deleteByConversation(conversationId);
                 } catch (RuntimeException e) {
-                    log.debug("Unable to delete storead analysis for deleted conversation {}", one, e);
+                    log.debug("Unable to delete storead analysis for deleted conversation[id: {}]", conversationId, e);
                 }
             }
         }
-        return one;
+        return deleted;
     }
     /**
      * Updates a field of the conversation<p>
@@ -259,7 +255,7 @@ public class ConversationService {
         if("meta.status".equals(mongoField)){
             //meta status is an enumeration so only some values are allowed
             try {
-                return updateStatus(conversationId, Status.valueOf(data.toString()));
+                return updateStatus(conversationId, data == null ? null : Status.valueOf(data.toString()));
             } catch (IllegalArgumentException | NullPointerException e) {
                 throw new BadArgumentException(field, data, "supported values are NULL or " + Status.values());
             }
@@ -415,6 +411,8 @@ public class ConversationService {
     }
     
     protected final Conversation store(Conversation conversation) {
+        Preconditions.checkNotNull(conversation);
+        Preconditions.checkArgument(conversation.getDeleted() == null, "Unable to store %s as it is marked as deleted", conversation);
         conversation.setLastModified(new Date());
         if(conversation.getId() != null){ //if we update an existing we need to validate the clientId value
             Conversation persisted = getConversation(conversation.getId());
@@ -442,7 +440,7 @@ public class ConversationService {
     }
     
     public Conversation adjustMessageVotes(ObjectId conversationId, String messageId, int delta) {
-        return conversationRepository.adjustMessageVotes(conversationId, messageId, delta);
+        return publishSaveEvent(conversationRepository.adjustMessageVotes(conversationId, messageId, delta));
     }
 
     public Iterable<ObjectId> listConversationIDs(){

@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.PersistenceConstructor;
@@ -70,7 +71,7 @@ public class Conversation {
     private User user = new User();
 
     @ApiModelProperty(required = true, value = "List of Messages")
-    private final List<Message> messages = new LinkedList<>();
+    private final List<Message> messages = new LinkedList<Message>();
 
 //    NOTE: removed with 0.7.0: Analysis is now stored in an own collection. Mainly because one
 //    conversation might have different analysis for clients with different configurations.
@@ -84,23 +85,43 @@ public class Conversation {
     @ApiModelProperty(readOnly=true,notes="Server assigned modification date")
     @Indexed
     private Date lastModified = null;
+    
+    @JsonIgnore
+    @Indexed(sparse=false)
+    private final Date deleted;
 
+    
     public Conversation(){
-        this(null, null);
+        this(null, null, null);
+    }
+    
+    public Conversation(ObjectId id, ObjectId owner) {
+        this(id,owner,null);
     }
     
     @PersistenceConstructor
-    public Conversation(ObjectId id, ObjectId owner){
+    public Conversation(ObjectId id, ObjectId owner, Date deleted){
         this.id = id;
         this.owner = owner;
+        this.deleted = deleted;
     }
     
+
     public ObjectId getId() {
         return id;
     }
     
     public void setId(ObjectId id) {
         this.id = id;
+    }
+    
+    /**
+     * If not <code>null</code> this conversation is marked as deleted
+     * @return the date when this conversation was marked as deleted or 
+     * <code>null</code> if not 
+     */
+    public Date getDeleted() {
+        return deleted;
     }
     
     /**

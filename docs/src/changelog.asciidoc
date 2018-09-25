@@ -5,6 +5,82 @@
 
 This document shows the changes that are introduced into Smarti with the releases.
 
+== Smarti 0.8.0 Release Notes
+
+Smarti `0.8.0` introduces a new result provider "Rocket.Chat-Search", providing live search on the integrated
+Rocket.Chat search functionality.
+
+=== New in Smarti 0.8.0
+
+* https://github.com/redlink-gmbh/smarti/issues/275[#275 - Implement UI for Rocket.Chat Query Provider]
+* https://github.com/redlink-gmbh/smarti/issues/276[#276 - Implement Rocket.Chat query provider]
+* https://github.com/redlink-gmbh/smarti/issues/278[#278 - Exclude Context Messages for Rocket.Chat Search]
+* https://github.com/redlink-gmbh/smarti/issues/281[#281 - Limit Messages per Conversation]
+* https://github.com/redlink-gmbh/smarti/issues/282[#282 - Add RocketChatSearch Query Provider to existing Configurations]
+* https://github.com/redlink-gmbh/smarti/issues/283[#283 - Update Changelog with the new Features in Smarit 0.8.0]
+
+=== Upgrading
+
+To ensure that the improved analysis result is available for all users,
+you should clear the collection caching analysis results.
+
+Furthermore, all client-configurations that have the classical `conversationsearch` enabled get the new
+`rocketchatsearch` endpoint added.
+
+A migration script is available. If you are not using one of the provided
+installation packages (deb, rpm) or docker, you must apply it manually:
+
+.migrate-07_0.7.1-to-0.8.0.js
+[source,javascript]
+-----------------------------------------------
+include::{migration_scripts}/migrate-07_0.7.1-to-0.8.0.js[lines=112..-1]
+-----------------------------------------------
+
+== Smarti 0.7.7 Release Notes
+Sept 11^th^, 2018
+
+Smarti `0.7.7` contains minor bug fixes for the Samrti Widget and deactivated filters for conversation search
+
+=== New in Smarti 0.7.7
+
+* https://github.com/redlink-gmbh/smarti/issues/265[#265 - Smarti widget does not update analysis results correctly]
+* https://github.com/redlink-gmbh/smarti/issues/280[#280 - Conversation Search Filters update]
+
+== Smarti 0.7.6 Release Notes
+June 18^th^, 2018
+
+Smarti `0.7.6` contains bug fixes for the Samrti Widget the Conversation Search and the synchronization of the Conversation Index
+
+=== New in Smarti 0.7.6
+
+* https://github.com/redlink-gmbh/smarti/issues/262[#262 - Show meaningful informations/warnings/error within the Smarti widget]
+* https://github.com/redlink-gmbh/smarti/issues/263[#263 - HTML-Tags for highlighting should not be escaped in Smarti results]
+* https://github.com/redlink-gmbh/smarti/issues/269[#269 - Conversation Indexer not syncing]
+* https://github.com/redlink-gmbh/smarti/issues/270[#270 - Messages flagged as `skipAnalysis` should not be considered for related conversation queries]
+
+== Smarti 0.7.5 Release Notes
+June 14^th^, 2018
+
+Smarti `0.7.5` contains a bug fixe for the Samrti Widget
+
+=== New in Smarti 0.7.5
+
+* https://github.com/redlink-gmbh/smarti/issues/262[#262 - Show meaningful informations/warnings/error within the Smarti widget]
+
+== Smarti 0.7.4 Release Notes
+June 13^th^, 2018
+
+Smarti `0.7.4` contains bug fixes to Smarti and the Samrti Widget
+
+=== New in Smarti 0.7.4
+
+* https://github.com/redlink-gmbh/smarti/issues/225[#225 - Automatic reloading of results does not work as expected]
+* https://github.com/redlink-gmbh/smarti/issues/249[#249 - CloudSync does not work for deleted Conversations]
+* https://github.com/redlink-gmbh/smarti/issues/252[#252 - The ConversationWidget is not refreshed correctly]
+* https://github.com/redlink-gmbh/smarti/issues/255[#255 - Smarti Widget fails to render messages containing code]
+* https://github.com/redlink-gmbh/smarti/issues/258[#258 - Loading Smarti fails for empty conversations] 
+* https://github.com/redlink-gmbh/smarti/issues/259[#259 - Rocket.Chat legacy endpoint does not filter for conversations marked as deleted]
+
 == Smarti 0.7.3 Release Notes
 May 15^th^, 2018
 
@@ -12,7 +88,7 @@ Smarti `0.7.3` contains a fix to the Chatpal Backend
 
 === New in Smarti 0.7.3
 
-* https://github.com/redlink-gmbh/smarti/issues/249[#249 - CloudSync does not work for deleted Conversations]
+* https://github.com/redlink-gmbh/smarti/issues/250[#250 - Aggregation size limit exceeded while CloudSync]
 
 == Smarti 0.7.2 Release Notes
 May 14^th^, 2018

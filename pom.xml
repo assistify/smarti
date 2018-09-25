@@ -21,7 +21,7 @@
 
     <groupId>io.redlink.smarti</groupId>
     <artifactId>smarti</artifactId>
-    <version>0.7.3</version>
+    <version>0.8.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>smarti</name>
@@ -105,8 +105,8 @@
         <swagger.version>1.5.13</swagger.version>
 
         <!-- frontend versions -->
-        <node.version>v6.9.1</node.version>
-        <npm.version>3.10.8</npm.version>
+        <node.version>v8.11.2</node.version>
+        <npm.version>5.6.0</npm.version>
 
         <redlink.logback.extension>1.0-SNAPSHOT</redlink.logback.extension>
     </properties>
@@ -115,7 +115,7 @@
         <connection>scm:git:https://github.com/redlink-gmbh/smarti.git</connection>
         <developerConnection>scm:git:git@github.com:redlink-gmbh/smarti.git</developerConnection>
         <url>https://github.com/redlink-gmbh/smarti/src</url>
-        <tag>smarti-0.7.3</tag>
+        <tag>smarti-0.8.0-RC1</tag>
     </scm>
     <issueManagement>
         <system>github</system>

@@ -11,13 +11,17 @@
     "en": "Subscription to stream 'new-conversation-result' failed",
     "de": "Anmeldung an den stream 'new-conversation-result' fehlgeschlagen"
   },
-  "smarti.result.no-result": {
-    "de": "Dieser Raum ist im Wissensbasis nicht verfügbar!",
-    "en": "This room is not available in the knowledgebase!"
+  "smarti.result.conversation-not-found": {
+    "de": "Oops, für diesen Raum konnte keine Konversation in der Wissensbasis gefunden werden. Bitte stelle eine Anfrage zum Thema Assistify und teile es uns mit.",
+    "en": "Oops, no conversation found for this room in the knowledge-base. Please create a request for Assistify and report this incident to us."
   },
   "smarti.result.error": {
     "de": "Serverseitiger Fehler: $[1]",
     "en": "Server-side error: $[1]"
+  },
+  "smarti.result.no-response": {
+    "de": "Keine Antwort vom Server!",
+    "en": "No response from server!"
   },
   "smarti.no-widgets": {
     "de": "Keine Widgets verfügbar!",
@@ -160,8 +164,12 @@
     "de":"Ähnliche Konversationen"
   },
   "widget.conversation.no-results":{
-    "en":"No related conversations found.",
-    "de":"Keine ähnlichen Konversationen gefunden."
+    "en":"No related conversations could be found. The knowledge-base requires more message content.",
+    "de":"Es konnten keine passenden Inhalte gefunden werden. Für eine Analyse benötigt die Wissensbasis mehr Nachrichteninhalte."
+  },
+  "widget.conversation.no-results-no-msg":{
+    "en":"In order for the knowledge-base to find related conversations, at least one message should exist. Please start the conversation.",
+    "de":"Damit die Wissensbasis etwas vorschlagen kann, muss mindestens eine Nachricht geschrieben werden. Bitte starte die Unterhaltung."
   },
   "widget.conversation.answer.title": {
     "de":"Ich habe eine passende Konversation gefunden:",
@@ -188,7 +196,23 @@
     "en": "Post $[1] selected messages"
   },
   "filter.property.support_area": {
-    "de": "Thema",
-    "en": "Topic"
+    "de": "ähnliches Thema",
+    "en": "related topic"
+  },
+  "rc.search-provider.inactive": {
+    "de": "Der Suchanbieter ist nicht aktiviert.",
+    "en": "The search provider is not active."
+  },
+  "rc.search-provider.not-supported": {
+    "de": "Der aktuelle Suchanbieter wird nicht unterstützt.",
+    "en": "Current search provider is not supported."
+  },
+  "rc.search.jump": {
+    "de": "Springen",
+    "en": "Jump"
+  },
+  "rc.search.copy": {
+    "de": "Kopieren",
+    "en": "Copy"
   }
 }
